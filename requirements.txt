@@ -1,0 +1,30 @@
+# Telegram bot
+pytelegrambotapi
+
+# Env
+python-dotenv
+
+# Logs
+rich
+python-json-logger
+asgi-correlation-id
+
+# Dev
+ruff
+isort
+
+# Web server
+flask
+waitress
+
+# Database
+sqlalchemy
+psycopg2
+
+# http client
+requests
+
+# Extra
+yt-dlp
+schedule
+pytz
