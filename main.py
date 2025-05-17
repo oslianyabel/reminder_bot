@@ -339,4 +339,5 @@ def handle_reminder_time(msg):
 
 if __name__ == "__main__":
     logger.info("Iniciando Bot")
+    bot.delete_webhook()
     bot.polling()
