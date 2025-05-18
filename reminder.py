@@ -31,7 +31,9 @@ def check_reminders():
             continue
 
         if datetime.now() >= reminder["date"]:
-            message = f"⏰ Recordatorio: {reminder['title']}\n🔔 Es ahora!\n"
+            diferencia = datetime.now() - reminder['date']
+            diferencia = diferencia.total_seconds() / 60
+            message = f"⏰ Recordatorio: {reminder['title']}\n🔔 Faltan {diferencia} minutos!\n"
             bot.send_message(reminder["user_id"], message)
             db.update_model(
                 reminder["id"],

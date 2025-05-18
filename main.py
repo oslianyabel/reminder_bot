@@ -23,14 +23,16 @@ def send_msg(obj_msg, msg, markup=ReplyKeyboardRemove()):
 
 
 def convert_timezone(date_time, from_tz_str, to_tz_str):
-    logger.warning(f"Convert datetime from {from_tz_str} to {to_tz_str}")
+    logger.info(f"Convert datetime from {from_tz_str} to {to_tz_str}")
     from_tz = pytz.timezone(from_tz_str)
     to_tz = pytz.timezone(to_tz_str)
 
     from_timezone_dt = from_tz.localize(date_time)
     to_timezone_dt = from_timezone_dt.astimezone(to_tz)
 
-    return to_timezone_dt.replace(tzinfo=None)
+    result = to_timezone_dt.replace(tzinfo=None)
+    logger.info(f"Date converted to: {result}")
+    return result
 
 
 @bot.message_handler(commands=["start"])
@@ -115,11 +117,11 @@ def handle_reminder_date(msg):
         user = db.get_model(
             msg.chat.id, db.users, f"get timezone from user {msg.from_user.username}"
         )
-        if user.get("time_zone"):
-            if user["time_zone"] != config.SERVER_TIMEZONE:
-                date = convert_timezone(date, user["time_zone"], config.SERVER_TIMEZONE)
+        user_time_zone = user.get("time_zone")
+        if user_time_zone and user_time_zone != config.SERVER_TIMEZONE:
+            date = convert_timezone(date, user_time_zone, config.SERVER_TIMEZONE)
 
-        if datetime.now() >= date:
+        if datetime.now() > date:
             send_msg(msg, "La fecha no puede pertenecer al pasado")
             return
 
