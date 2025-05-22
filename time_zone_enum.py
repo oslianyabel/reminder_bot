@@ -9,11 +9,11 @@ class TimeZoneEnum(Enum):
     MADRID = "Europe/Madrid"
     LONDON = "Europe/London"
     TOKYO = "Asia/Tokyo"
-    
+
     @classmethod
     def get_all(cls):
-        return [tz.value for tz in cls]
-    
+        return [tz.name for tz in cls]
+
     @classmethod
     def is_valid(cls, timezone_str):
-        return any(timezone_str == tz.value for tz in cls)
+        return any(timezone_str == tz.name for tz in cls)
