@@ -9,7 +9,7 @@ from database import db
 from logging_conf import configure_logging
 
 configure_logging()
-logger = logging.getLogger("remember.bot")
+logger = logging.getLogger("app")
 
 bot = telebot.TeleBot(config.TELEGRAM_TOKEN)
 db.connect()

@@ -13,6 +13,10 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    Float,
+    Numeric,
+    Interval,
+    DateTime,
     create_engine,
     delete,
     insert,
@@ -21,7 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.sql import func
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("app")
 
 
 class DatabaseManager:
@@ -43,14 +47,14 @@ class DatabaseManager:
             Column("first_name", String(100), nullable=False),
             Column("last_name", String(100)),
             Column("time_zone", String(50)),
-            Column("default_reminder_minutes", Integer, default=60),
+            Column("default_reminder_minutes", Integer, server_default=60),
             Column("is_active", Boolean, nullable=False, server_default="true"),
         ]
 
     def _get_reminder_columns(self):
         return [
             Column("id", BigInteger, primary_key=True),
-            Column("user_id", ForeignKey("users.id"), nullable=False),
+            Column("user_id", ForeignKey("users.id"), nullable=False, cascade=True),
             Column("title", String(255), nullable=False),
             Column("description", Text),
             Column("date", TIMESTAMP()),

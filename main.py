@@ -2,37 +2,21 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-import config
 import pytz
-import telebot
+from telebot.types import KeyboardButton, ReplyKeyboardMarkup
+
+import config
+from bot import bot
 from database import db
 from logging_conf import configure_logging
-from telebot.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from utils import convert_timezone, send_msg, time_zone_markup
 
 configure_logging()
-logger = logging.getLogger("remember.bot")
-bot = telebot.TeleBot(config.TELEGRAM_TOKEN)
+logger = logging.getLogger("app")
+
 db.connect()
 
 USER_STATES = {}
-
-
-def send_msg(obj_msg, msg, markup=ReplyKeyboardRemove()):
-    bot.send_chat_action(obj_msg.chat.id, "typing")
-    bot.send_message(obj_msg.chat.id, msg, reply_markup=markup)
-
-
-def convert_timezone(date_time, from_tz_str, to_tz_str):
-    logger.info(f"Convert datetime from {from_tz_str} to {to_tz_str}")
-    from_tz = pytz.timezone(from_tz_str)
-    to_tz = pytz.timezone(to_tz_str)
-
-    from_timezone_dt = from_tz.localize(date_time)
-    to_timezone_dt = from_timezone_dt.astimezone(to_tz)
-
-    result = to_timezone_dt.replace(tzinfo=None)
-    logger.info(f"Date converted to: {result}")
-    return result
 
 
 @bot.message_handler(commands=["start"])
@@ -40,19 +24,17 @@ def cmd_start(msg):
     logger.info("/start")
     user = db.get_model(msg.chat.id, db.users, f"get user {msg.from_user.username}")
     if not user:
-        data = {
+        user_data = {
             "id": msg.chat.id,
             "username": msg.from_user.username,
             "first_name": msg.from_user.first_name,
             "last_name": msg.from_user.last_name,
-            "time_zone": "America/Havana",
-            "default_reminder_minutes": 60,
-            "is_active": True,
         }
-        db.create_model(data, db.users, f"create user {msg.from_user.username}")
+        bot.register_next_step_handler(msg, get_timezone, user_data)
+        markup = time_zone_markup()
 
-    if msg.chat.id in USER_STATES:
-        del USER_STATES[msg.chat.id]
+        send_msg("Seleccione su zona horaria", markup)
+        return
 
     ans = (
         f"Hola {msg.from_user.first_name} 👋\n\n"
@@ -65,6 +47,35 @@ def cmd_start(msg):
     send_msg(msg, ans)
 
 
+def get_timezone(msg, user_data):
+    try:
+        pytz.timezone(msg.text)  # Verificar si la zona horaria es válida
+        user_data["time_zone"] = msg.text
+        db.create_model(user_data, db.users, f"create user {user_data['username']}")
+
+        ans = (
+            f"¡Bienvenido {msg.from_user.first_name}! 👋\n\n"
+            f"Tu zona horaria se ha configurado como: {msg.text}\n\n"
+            "Ahora puedes:\n"
+            "- Crear recordatorios con /reminder\n"
+            "- Ver tus recordatorios con /list\n"
+            "- Cambiar tu zona horaria con /timezone\n"
+            "- Ajustar el tiempo de recordatorios con /remindertime\n"
+            "- Activar/desactivar notificaciones con /activate"
+        )
+        send_msg(msg, ans)
+
+    except pytz.exceptions.UnknownTimeZoneError:
+        # Si la zona horaria no es válida, volver a pedirla
+        markup = time_zone_markup()
+        send_msg(
+            msg,
+            "❌ Zona horaria no válida. Por favor selecciona una de las opciones:",
+            markup,
+        )
+        bot.register_next_step_handler(msg, get_timezone, user_data)
+
+
 @bot.message_handler(commands=["reminder"])
 def create_reminder(msg):
     logger.info("/reminder")
@@ -73,43 +84,43 @@ def create_reminder(msg):
         send_msg(msg, "No estás registrado. Usa /start primero.")
         return
 
-    USER_STATES[msg.chat.id] = {"state": "title"}
     send_msg(msg, "Vamos a crear un nuevo recordatorio. Primero dime el título:")
+    bot.register_next_step_handler(msg, process_reminder_title)
 
 
-@bot.message_handler(
-    func=lambda message: USER_STATES.get(message.chat.id, {}).get("state") == "title"
-)
-def handle_reminder_title(msg):
-    USER_STATES[msg.chat.id]["title"] = msg.text
-    USER_STATES[msg.chat.id]["state"] = "description"
-    send_msg(
-        msg,
-        "Genial. Ahora, por favor, describe el recordatorio (o escribe 'saltar' si no quieres añadir una descripción):",
-    )
+def process_reminder_title(msg):
+    try:
+        reminder_data = {"title": msg.text}
+        sent_msg = bot.send_message(
+            msg.chat.id,
+            "Genial. Ahora, por favor, describe el recordatorio (o escribe 'saltar' si no quieres añadir una descripción):",
+        )
+        bot.register_next_step_handler(
+            sent_msg, process_reminder_description, reminder_data
+        )
+    except Exception as exc:
+        logger.error(f"Error en process_reminder_title: {exc}")
+        send_msg(msg, "Ocurrió un error. Por favor intenta nuevamente con /reminder")
 
 
-@bot.message_handler(
-    func=lambda message: USER_STATES.get(message.chat.id, {}).get("state")
-    == "description"
-)
-def handle_reminder_description(msg):
-    if msg.text.lower() != "saltar":
-        USER_STATES[msg.chat.id]["description"] = msg.text
-    else:
-        USER_STATES[msg.chat.id]["description"] = None
+def process_reminder_description(msg, reminder_data):
+    try:
+        if msg.text.lower() != "saltar":
+            reminder_data["description"] = msg.text
+        else:
+            reminder_data["description"] = None
 
-    USER_STATES[msg.chat.id]["state"] = "date"
-    send_msg(
-        msg,
-        "Ahora, ingresa la fecha y hora del recordatorio (formato: DD/MM/AAAA HH:MM)\nEjemplo: 25/12/2023 15:30",
-    )
+        sent_msg = bot.send_message(
+            msg.chat.id,
+            "Ahora, ingresa la fecha y hora del recordatorio (formato: DD/MM/AAAA HH:MM)\nEjemplo: 25/12/2023 15:30",
+        )
+        bot.register_next_step_handler(sent_msg, process_reminder_date, reminder_data)
+    except Exception as e:
+        logger.error(f"Error en process_reminder_description: {e}")
+        send_msg(msg, "Ocurrió un error. Por favor intenta nuevamente con /reminder")
 
 
-@bot.message_handler(
-    func=lambda message: USER_STATES.get(message.chat.id, {}).get("state") == "date"
-)
-def handle_reminder_date(msg):
+def process_reminder_date(msg, reminder_data):
     try:
         date_str = re.sub(r"[^\d/ :]", "", msg.text)
         date = datetime.strptime(date_str, "%d/%m/%Y %H:%M")
@@ -118,60 +129,71 @@ def handle_reminder_date(msg):
             msg.chat.id, db.users, f"get timezone from user {msg.from_user.username}"
         )
         user_time_zone = user.get("time_zone")
-        if user_time_zone and user_time_zone != config.SERVER_TIMEZONE:
+
+        if user_time_zone != config.SERVER_TIMEZONE:
             date = convert_timezone(date, user_time_zone, config.SERVER_TIMEZONE)
 
         if datetime.now() > date:
             send_msg(msg, "La fecha no puede pertenecer al pasado")
             return
 
-        USER_STATES[msg.chat.id]["date"] = date
-        USER_STATES[msg.chat.id]["state"] = "confirmation"
+        reminder_data["date"] = date
 
-        reminder = USER_STATES[msg.chat.id]
+        # Mostrar resumen y pedir confirmación
         summary = (
             f"📌 Resumen del recordatorio:\n\n"
-            f"🏷 Título: {reminder['title']}\n"
-            f"📝 Descripción: {reminder.get('description', 'Ninguna')}\n"
-            f"📅 Fecha y hora: {date.strftime('%d/%m/%Y %H:%M %Z')}\n\n"
+            f"🏷 Título: {reminder_data['title']}\n"
+            f"📝 Descripción: {reminder_data.get('description', 'Ninguna')}\n"
+            f"📅 Fecha y hora: {date.strftime('%d/%m/%Y %H:%M')}\n\n"
             f"¿Todo correcto? (sí/no)"
         )
 
         markup = ReplyKeyboardMarkup(one_time_keyboard=True)
         markup.add(KeyboardButton("Sí"), KeyboardButton("No"))
 
-        send_msg(msg, summary, markup)
+        sent_msg = bot.send_message(msg.chat.id, summary, reply_markup=markup)
+        bot.register_next_step_handler(
+            sent_msg, process_reminder_confirmation, reminder_data
+        )
 
     except ValueError:
         send_msg(
             msg,
             "Formato incorrecto. Por favor ingresa la fecha y hora en formato DD/MM/AAAA HH:MM\nEjemplo: 25/12/2023 15:30",
         )
+    except Exception as exc:
+        logger.error(f"Error en process_reminder_date: {exc}")
+        send_msg(msg, "Ocurrió un error. Por favor intenta nuevamente con /reminder")
 
 
-@bot.message_handler(
-    func=lambda message: USER_STATES.get(message.chat.id, {}).get("state")
-    == "confirmation"
-)
-def handle_confirmation(msg):
-    if msg.text.lower() in ["sí", "si", "s"]:
-        user = db.get_model(msg.chat.id, db.users, f"get user {msg.from_user.username}")
-        reminder_time = USER_STATES[msg.chat.id]["date"] - timedelta(
-            minutes=user["default_reminder_minutes"]
+def process_reminder_confirmation(msg, reminder_data):
+    try:
+        if msg.text.lower() in ["sí", "si", "s"]:
+            user = db.get_model(
+                msg.chat.id, db.users, f"get user {msg.from_user.username}"
+            )
+            reminder_time = reminder_data["date"] - timedelta(
+                minutes=user["default_reminder_minutes"]
+            )
+            data = {
+                "user_id": msg.chat.id,
+                "title": reminder_data["title"],
+                "description": reminder_data["description"],
+                "date": reminder_data["date"],
+                "reminder_time": reminder_time,
+            }
+            db.create_model(data, db.reminders, f"create reminder {data['title']}")
+            send_msg(msg, "✅ Recordatorio creado exitosamente!")
+        else:
+            send_msg(
+                msg, "Recordatorio cancelado. Puedes empezar de nuevo con /reminder"
+            )
+    except Exception as e:
+        logger.error(f"Error en process_reminder_confirmation: {e}")
+        send_msg(
+            msg,
+            "Ocurrió un error al crear el recordatorio. Por favor intenta nuevamente.",
         )
-        data = {
-            "user_id": msg.chat.id,
-            "title": USER_STATES[msg.chat.id]["title"],
-            "description": USER_STATES[msg.chat.id]["description"],
-            "date": USER_STATES[msg.chat.id]["date"],
-            "reminder_time": reminder_time,
-        }
-        db.create_model(data, db.reminders, f"create reminder {data['title']}")
-        send_msg(msg, "✅ Recordatorio creado exitosamente!")
-    else:
-        send_msg(msg, "Recordatorio cancelado. Puedes empezar de nuevo con /reminder")
-
-    del USER_STATES[msg.chat.id]
 
 
 @bot.message_handler(commands=["list"])
@@ -248,19 +270,7 @@ def set_timezone(msg):
 
     USER_STATES[msg.chat.id] = {"state": "timezone"}
 
-    common_timezones = [
-        "America/Havana",
-        "America/Mexico_City",
-        "America/New_York",
-        "America/Los_Angeles",
-        "Europe/Madrid",
-        "Europe/London",
-        "Asia/Tokyo",
-    ]
-
-    markup = ReplyKeyboardMarkup(one_time_keyboard=True)
-    for tz in common_timezones:
-        markup.add(KeyboardButton(tz))
+    markup = time_zone_markup()
 
     send_msg(
         msg,

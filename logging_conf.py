@@ -58,7 +58,7 @@ def configure_logging() -> None:
                     "handlers": ["default"],
                     "level": "WARNING",
                 },
-                "remember": {
+                "app": {
                     "handlers": ["default"],
                     "level": "DEBUG",
                     "propagate": False,
