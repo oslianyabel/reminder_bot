@@ -138,7 +138,7 @@ def process_reminder_date(msg, reminder_data):
             date = convert_timezone(date, user_time_zone, config.SERVER_TIMEZONE)
 
         if datetime.now() > date:
-            bot.send_message(msg.chat.id, "La fecha no puede pertenecer al pasado")
+            bot.send_message(msg.chat.id, f"La fecha no puede pertenecer al pasado. Son las {datetime.now()}")
             return
 
         reminder_data["date"] = date
@@ -367,6 +367,6 @@ def handle_reminder_time(msg):
 
 
 if __name__ == "__main__":
-    logger.info("Iniciando Bot")
+    logger.info("Bot Online!")
     bot.delete_webhook()
     bot.polling()

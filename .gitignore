@@ -1,5 +1,6 @@
 .env
-__pycache__/
 records.log*
 venv/
 notas.txt
+__pycache__/
+.vscode/

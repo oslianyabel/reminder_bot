@@ -47,20 +47,20 @@ class DatabaseManager:
             Column("first_name", String(100), nullable=False),
             Column("last_name", String(100)),
             Column("time_zone", String(50)),
-            Column("default_reminder_minutes", Integer, server_default=60),
-            Column("is_active", Boolean, nullable=False, server_default="true"),
+            Column("default_reminder_minutes", Integer, default=60),
+            Column("is_active", Boolean, nullable=False, default="true"),
         ]
 
     def _get_reminder_columns(self):
         return [
             Column("id", BigInteger, primary_key=True),
-            Column("user_id", ForeignKey("users.id"), nullable=False, cascade=True),
+            Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
             Column("title", String(255), nullable=False),
             Column("description", Text),
             Column("date", TIMESTAMP()),
             Column("reminder_time", TIMESTAMP(), nullable=False),
-            Column("status", String(100), server_default="pending"),
-            Column("created_at", TIMESTAMP(), server_default=func.now()),
+            Column("status", String(100), default="pending"),
+            Column("created_at", TIMESTAMP(), default=func.now()),
             Column("updated_at", TIMESTAMP()),
         ]
 
